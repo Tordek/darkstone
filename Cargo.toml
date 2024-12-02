@@ -1,0 +1,9 @@
+[package]
+name = "darkstone"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.13.1", features = ["markdown", "tokio"] }
+tokio = { version = "1.41.1", features = ["fs", "rt"] }
+url = "2.5.4"
