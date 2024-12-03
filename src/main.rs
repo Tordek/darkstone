@@ -1,5 +1,6 @@
 mod notes;
-
+mod note_editor;
+mod util;
 struct Darkstone {
     notes: notes::Notes,
 }
@@ -12,7 +13,7 @@ enum Message {
 impl Darkstone {
     fn new() -> (Self, iced::Task<Message>) {
         let (notes, notes_task) = notes::Notes::new(format!(
-            "{}/src/0de5",
+            "{}/src/shitty",
             std::env::var("HOME")
                 .expect("How is the env not set")
                 .to_string()

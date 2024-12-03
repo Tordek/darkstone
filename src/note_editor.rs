@@ -2,16 +2,12 @@ use std::io;
 
 pub struct NoteEditor {
     path: String,
-    state: State,
+    state: crate::util::Query<InternalState, String>,
 }
 
-enum State {
-    Loading,
-    Loaded {
-        content: iced::widget::text_editor::Content,
-        preview: Vec<iced::widget::markdown::Item>,
-    },
-    Error(String),
+struct InternalState {
+    content: iced::widget::text_editor::Content,
+    preview: Vec<iced::widget::markdown::Item>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +22,7 @@ impl NoteEditor {
         (
             Self {
                 path: path.clone(),
-                state: State::Loading,
+                state: crate::util::Query::Pending,
             },
             iced::Task::perform(read_file(path), Message::Loaded),
         )
@@ -34,36 +30,41 @@ impl NoteEditor {
 
     pub fn view(self: &Self) -> iced::Element<'_, Message> {
         match &self.state {
-            State::Loading => iced::widget::Text::new("Loading...").into(),
-            State::Loaded { content, preview } => {
+            crate::util::Query::Pending => iced::widget::Text::new("Loading...").into(),
+            crate::util::Query::Loaded(InternalState { content, preview }) => {
                 let main_body = {
                     let editor = iced::widget::TextEditor::new(&content).on_action(Message::Edit);
 
-                    let preview = iced::widget::Column::new()
-                        .push(iced::widget::Text::new("Preview"))
-                        .push(
-                            iced::widget::markdown::view(
-                                preview,
-                                iced::widget::markdown::Settings::default(),
-                                iced::widget::markdown::Style::from_palette(
-                                    iced::Theme::TokyoNightStorm.palette(),
-                                ),
-                            )
-                            .map(Message::None),
-                        );
-                    iced::widget::Row::new().push(editor).push(preview)
+                    let preview_component = iced::widget::markdown::view(
+                        preview,
+                        iced::widget::markdown::Settings::default(),
+                        iced::widget::markdown::Style::from_palette(
+                            iced::Theme::TokyoNightStorm.palette(),
+                        ),
+                    )
+                    .map(Message::None);
+                    iced::widget::Row::new()
+                        .push(editor)
+                        .push(preview_component)
                 };
 
-                iced::widget::column![main_body, iced::widget::text(self.path.clone())].into()
+                iced::widget::column![
+                    iced::widget::container(main_body).height(iced::Length::Fill),
+                    iced::widget::text(self.path.clone())
+                ]
+                .height(iced::Length::Fill)
+                .into()
             }
-            State::Error(e) => iced::widget::Text::new(e.clone()).into(),
+            crate::util::Query::Error(e) => iced::widget::Text::new(e.clone()).into(),
         }
     }
 
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::Edit(action) => {
-                if let State::Loaded { content, preview } = &mut self.state {
+                if let crate::util::Query::Loaded(InternalState { content, preview }) =
+                    &mut self.state
+                {
                     content.perform(action);
                     *preview = iced::widget::markdown::parse(&content.text()).collect();
                 }
@@ -72,11 +73,11 @@ impl NoteEditor {
             Message::Loaded(Ok(contents)) => {
                 let content = iced::widget::text_editor::Content::with_text(&contents.clone());
                 let preview = iced::widget::markdown::parse(&content.text()).collect();
-                self.state = State::Loaded { content, preview };
+                self.state = crate::util::Query::Loaded(InternalState { content, preview });
                 iced::Task::none()
             }
             Message::Loaded(Err(e)) => {
-                self.state = State::Error(format!("Failed to load file: {:?}", e));
+                self.state = crate::util::Query::Error(format!("Failed to load file: {:?}", e));
                 iced::Task::none()
             }
             Message::None(url) => {
