@@ -86,11 +86,20 @@ impl Darkstone {
 }
 
 async fn load_config(path: String) -> Result<config::Configuration, std::io::ErrorKind> {
-    let config_file = crate::util::read_file(path).await?;
-    let config = config::Configuration {
-        notes_path: config_file.trim().to_string(),
-    };
-    Ok(config)
+    match crate::util::read_file(path).await {
+        Ok(file) => {
+            let config = config::Configuration {
+                notes_path: file.trim().to_string(),
+            };
+            Ok(config)
+        }
+        Err(std::io::ErrorKind::NotFound) => {
+            let config = crate::config::Configuration::default();
+            save_config(config.clone()).await?;
+            Ok(config)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn save_config(config: config::Configuration) -> Result<(), std::io::ErrorKind> {
