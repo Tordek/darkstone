@@ -16,7 +16,7 @@ TODO
 [ ] Delete directories
 [ ] Drag and drop menu
 [ ] Shortcuts
-[ ] Settings file
+[x] Settings file
 [ ] Settings menu
 
 License

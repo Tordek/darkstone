@@ -1,37 +1,109 @@
-mod notes;
+use iced::futures::TryFutureExt;
+
+mod config;
 mod note_editor;
+mod notes;
 mod util;
+
 struct Darkstone {
+    data: util::Query<DarkstoneData, std::io::ErrorKind>,
+}
+
+struct DarkstoneData {
+    config: config::Configuration,
     notes: notes::Notes,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
+    LoadConfig,
+    LoadedConfig(Result<config::Configuration, std::io::ErrorKind>),
+    SaveConfig,
+    SavedConfig(Result<(), std::io::ErrorKind>),
     Notes(notes::Message),
 }
 
 impl Darkstone {
     fn new() -> (Self, iced::Task<Message>) {
-        let (notes, notes_task) = notes::Notes::new(format!(
-            "{}/src/shitty",
-            std::env::var("HOME")
-                .expect("How is the env not set")
-                .to_string()
-        ));
-        (Self { notes }, iced::Task::map(notes_task, Message::Notes))
+        (
+            Self {
+                data: util::Query::Pending,
+            },
+            iced::Task::done(Message::LoadConfig),
+        )
     }
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
-            Message::Notes(message) => self.notes.update(message).map(Message::Notes),
+            Message::LoadConfig => iced::Task::perform(
+                load_config(format!(
+                    "{}/.config/darkstone/config",
+                    std::env::var("HOME").unwrap()
+                )),
+                Message::LoadedConfig,
+            ),
+            Message::SaveConfig => match &self.data {
+                util::Query::Loaded(DarkstoneData { config, notes: _ }) => {
+                    // Save the config
+                    iced::Task::perform(save_config(config.clone()), Message::SavedConfig)
+                }
+                _ => iced::Task::none(),
+            },
+            Message::SavedConfig(Ok(_)) => iced::Task::none(),
+            Message::SavedConfig(Err(e)) => {
+                self.data = util::Query::Error(e);
+                iced::Task::none()
+            }
+            Message::LoadedConfig(Ok(config)) => {
+                let (notes, notes_task) = notes::Notes::new(config.notes_path.clone());
+                self.data = util::Query::Loaded(DarkstoneData {
+                    config: config.clone(),
+                    notes: notes,
+                });
+                notes_task.map(Message::Notes)
+            }
+            Message::LoadedConfig(Err(e)) => {
+                self.data = util::Query::Error(e);
+                iced::Task::none()
+            }
+            Message::Notes(message) => match &mut self.data {
+                util::Query::Loaded(DarkstoneData {
+                    ref mut notes,
+                    config: _,
+                }) => {
+                    return notes.update(message).map(Message::Notes);
+                }
+                _ => iced::Task::none(),
+            },
         }
     }
     fn view(&self) -> iced::Element<'_, Message> {
-        notes::Notes::view(&self.notes).map(Message::Notes)
+        match self.data {
+            util::Query::Pending => iced::widget::Text::new("Loading...").into(),
+            util::Query::Loaded(ref data) => data.notes.view().map(Message::Notes).into(),
+            util::Query::Error(ref e) => iced::widget::Text::new(format!("{:?}", e)).into(),
+        }
     }
+}
+
+async fn load_config(path: String) -> Result<config::Configuration, std::io::ErrorKind> {
+    let config_file = crate::util::read_file(path).await?;
+    let config = config::Configuration {
+        notes_path: config_file.trim().to_string(),
+    };
+    Ok(config)
+}
+
+async fn save_config(config: config::Configuration) -> Result<(), std::io::ErrorKind> {
+    let config_file = format!("notes_path: {}", config.notes_path);
+    let path = format!("{}/.darkstone/config", std::env::var("HOME").unwrap());
+    tokio::fs::write(path, config_file)
+        .map_err(|e| e.kind())
+        .await?;
+    Ok(())
 }
 
 pub fn main() -> iced::Result {
     iced::application("Darkstone", Darkstone::update, Darkstone::view)
-        .theme(|_| iced::Theme::TokyoNightStorm)
+        .theme(|_| iced::Theme::TokyoNight)
         .run_with(|| Darkstone::new())
 }

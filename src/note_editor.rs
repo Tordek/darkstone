@@ -1,5 +1,3 @@
-use std::io;
-
 pub struct NoteEditor {
     path: String,
     state: crate::util::Query<InternalState, String>,
@@ -24,7 +22,7 @@ impl NoteEditor {
                 path: path.clone(),
                 state: crate::util::Query::Pending,
             },
-            iced::Task::perform(read_file(path), Message::Loaded),
+            iced::Task::perform(crate::util::read_file(path), Message::Loaded),
         )
     }
 
@@ -86,11 +84,4 @@ impl NoteEditor {
             }
         }
     }
-}
-
-async fn read_file(filename: String) -> std::result::Result<String, io::ErrorKind> {
-    let pathname = std::path::Path::new(&filename);
-    tokio::fs::read_to_string(pathname)
-        .await
-        .map_err(|e| e.kind())
 }
