@@ -14,10 +14,10 @@ TODO
 [ ] Delete files
 [ ] Create directories
 [ ] Delete directories
-[ ] Drag and drop menu
 [ ] Shortcuts
 [x] Settings file
 [ ] Settings menu
+[ ] A real settings system
 
 License
 =======
