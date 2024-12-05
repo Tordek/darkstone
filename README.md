@@ -26,7 +26,6 @@ TODO
 - [ ] Create directories
 - [ ] Delete directories
 - [ ] Drag files into/out of subdirs
-- [ ] Shortcuts
 - [x] Settings file
 - [ ] Settings menu
 - [ ] A real settings system
