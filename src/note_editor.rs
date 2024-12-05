@@ -114,11 +114,40 @@ impl NoteEditor {
             crate::util::Query::Loaded(InternalState { .. }) => {
                 iced::keyboard::on_key_press(|key, modifiers| {
                     if modifiers.control() {
-                        if key == iced::keyboard::Key::Character("s".into()) && modifiers.control()
+                        if key == iced::keyboard::Key::Character("b".into()) && modifiers.control()
                         {
-                            Some(Message::Edit(iced::widget::text_editor::Action::Edit(
-                                iced::widget::text_editor::Edit::Paste("Hello".to_string().into()),
-                            )))
+                            // TODO: Bold
+                            None
+                        } else if key == iced::keyboard::Key::Character("i".into())
+                            && modifiers.control()
+                        {
+                            // TODO: Italic
+                            None
+                        } else if key == iced::keyboard::Key::Character("1".into())
+                            && modifiers.control()
+                        {
+                            // TODO: Title 1
+                            None
+                        } else if key == iced::keyboard::Key::Character("2".into())
+                            && modifiers.control()
+                        {
+                            // TODO: Title 2
+                            None
+                        } else if key == iced::keyboard::Key::Character("3".into())
+                            && modifiers.control()
+                        {
+                            // TODO: Title 3
+                            None
+                        } else if key == iced::keyboard::Key::Character("4".into())
+                            && modifiers.control()
+                        {
+                            // TODO: Title 4
+                            None
+                        } else if key == iced::keyboard::Key::Character("5".into())
+                            && modifiers.control()
+                        {
+                            // TODO: Title 5
+                            None
                         } else if key == iced::keyboard::Key::Character("p".into())
                             && modifiers.control()
                         {
