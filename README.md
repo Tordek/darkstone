@@ -12,7 +12,7 @@ Documentation
 [ ] Ctrl-B: Bold
 [ ] Ctrl-I: Italic
 [ ] Ctrl-1-5: Titles
-[ ] Ctrl-N: New
+[x] Ctrl-N: New
 [ ] Ctrl-U: Strikethrough
 
 TODO
@@ -21,10 +21,11 @@ TODO
 [ ] Tabs
 [ ] Autosave
 [ ] Shortcuts
-[ ] Create files
-[ ] Delete files
+[x] Create files
+[x] Delete files
 [ ] Create directories
 [ ] Delete directories
+[ ] Drag files into/out of subdirs
 [ ] Shortcuts
 [x] Settings file
 [ ] Settings menu

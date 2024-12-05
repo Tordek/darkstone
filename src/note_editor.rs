@@ -1,5 +1,5 @@
 pub struct NoteEditor {
-    path: String,
+    path: std::path::PathBuf,
     state: crate::util::Query<InternalState, String>,
 }
 
@@ -16,7 +16,7 @@ pub enum Message {
 }
 
 impl NoteEditor {
-    pub fn from_path(path: String) -> (Self, iced::Task<Message>) {
+    pub fn from_path(path: std::path::PathBuf) -> (Self, iced::Task<Message>) {
         (
             Self {
                 path: path.clone(),
@@ -48,7 +48,7 @@ impl NoteEditor {
 
                 iced::widget::column![
                     iced::widget::container(main_body).height(iced::Length::Fill),
-                    iced::widget::text(self.path.clone())
+                    iced::widget::text(self.path.to_string_lossy())
                 ]
                 .height(iced::Length::Fill)
                 .into()
@@ -82,6 +82,22 @@ impl NoteEditor {
                 print!("{}", url);
                 iced::Task::none()
             }
+        }
+    }
+    pub fn subscription(self: &Self) -> iced::Subscription<Message> {
+        match &self.state {
+            crate::util::Query::Loaded(InternalState { .. }) => {
+                iced::keyboard::on_key_press(|key, modifiers| {
+                    if key == iced::keyboard::Key::Character("s".into()) && modifiers.control() {
+                        Some(Message::Edit(iced::widget::text_editor::Action::Edit(
+                            iced::widget::text_editor::Edit::Paste("Hello".to_string().into()),
+                        )))
+                    } else {
+                        None
+                    }
+                })
+            }
+            _ => iced::Subscription::none(),
         }
     }
 }

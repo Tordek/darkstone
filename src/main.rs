@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use iced::futures::TryFutureExt;
 
 mod config;
@@ -35,10 +37,9 @@ impl Darkstone {
     fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::LoadConfig => iced::Task::perform(
-                load_config(format!(
-                    "{}/.config/darkstone/config",
-                    std::env::var("HOME").unwrap()
-                )),
+                load_config(
+                    PathBuf::from(std::env::var("HOME").unwrap()).join(".config/darkstone/config"),
+                ),
                 Message::LoadedConfig,
             ),
             Message::SaveConfig => match &self.data {
@@ -83,13 +84,23 @@ impl Darkstone {
             util::Query::Error(ref e) => iced::widget::Text::new(format!("{:?}", e)).into(),
         }
     }
+    fn subscription(&self) -> iced::Subscription<Message> {
+        match &self.data {
+            util::Query::Loaded(DarkstoneData { config: _, notes }) => {
+                notes.subscription().map(Message::Notes)
+            }
+            _ => iced::Subscription::none(),
+        }
+    }
 }
 
-async fn load_config(path: String) -> Result<config::Configuration, std::io::ErrorKind> {
+async fn load_config(
+    path: std::path::PathBuf,
+) -> Result<config::Configuration, std::io::ErrorKind> {
     match crate::util::read_file(path).await {
         Ok(file) => {
             let config = config::Configuration {
-                notes_path: file.trim().to_string(),
+                notes_path: PathBuf::from(file),
             };
             Ok(config)
         }
@@ -103,8 +114,9 @@ async fn load_config(path: String) -> Result<config::Configuration, std::io::Err
 }
 
 async fn save_config(config: config::Configuration) -> Result<(), std::io::ErrorKind> {
-    let config_file = format!("notes_path: {}", config.notes_path);
-    let path = format!("{}/.darkstone/config", std::env::var("HOME").unwrap());
+    let config_file = format!("notes_path: {}", config.notes_path.to_string_lossy());
+    let path =
+        std::path::PathBuf::from(std::env::var("HOME").unwrap()).join("/.config/darkstone/config");
     tokio::fs::write(path, config_file)
         .map_err(|e| e.kind())
         .await?;
@@ -114,5 +126,6 @@ async fn save_config(config: config::Configuration) -> Result<(), std::io::Error
 pub fn main() -> iced::Result {
     iced::application("Darkstone", Darkstone::update, Darkstone::view)
         .theme(|_| iced::Theme::TokyoNight)
-        .run_with(|| Darkstone::new())
+        .subscription(Darkstone::subscription)
+        .run_with(Darkstone::new)
 }

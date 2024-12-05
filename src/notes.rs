@@ -1,41 +1,36 @@
 use std::io;
 
 pub struct Notes {
-    notes: crate::util::Query<DirectoryContents, io::ErrorKind>,
+    notes: crate::util::Query<Directory, io::ErrorKind>,
     current: Option<crate::note_editor::NoteEditor>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Create,
-    Delete(String),
-    SetCurrent(String),
+    Delete(std::path::PathBuf),
+    SetCurrent(std::path::PathBuf),
     NoteEditorMessage(crate::note_editor::Message),
-    LoadFiles(Result<DirectoryContents, std::io::ErrorKind>),
-    Expand(String, bool),
-}
-
-#[derive(Debug, Clone)]
-pub struct DirectoryContents {
-    files: Vec<File>,
-    directories: Vec<Directory>,
+    LoadFiles(Result<Directory, std::io::ErrorKind>),
+    Expand(std::path::PathBuf, bool),
 }
 
 #[derive(Debug, Clone)]
 struct File {
     display_name: String,
-    path: String,
+    path: std::path::PathBuf,
 }
 
 #[derive(Debug, Clone)]
-struct Directory {
+pub struct Directory {
     display_name: String,
-    path: String,
+    path: std::path::PathBuf,
     expanded: bool,
-    contents: DirectoryContents,
+    files: Vec<File>,
+    directories: Vec<Directory>,
 }
 
-fn dir_tree(directory: &DirectoryContents) -> iced::Element<'_, Message> {
+fn dir_tree(directory: &Directory) -> iced::Element<'_, Message> {
     let mut note_list = iced::widget::Column::new();
     for file in &directory.files {
         note_list = note_list.push(
@@ -45,31 +40,30 @@ fn dir_tree(directory: &DirectoryContents) -> iced::Element<'_, Message> {
                 )
                 .on_press(Message::SetCurrent(file.path.clone())),
                 iced::widget::button(iced::widget::text("x"))
-                    .on_press(Message::Delete(file.display_name.clone())),
+                    .on_press(Message::Delete(file.path.clone())),
             ]
             .padding(iced::padding::left(15)),
         );
     }
-    for directory in &directory.directories {
+    for child in &directory.directories {
         note_list = note_list.push(iced::widget::row![
             iced::widget::mouse_area(iced::widget::row![
-                iced::widget::text(if directory.expanded { "-" } else { "+" })
+                iced::widget::text(if child.expanded { "-" } else { "+" })
                     .height(20)
                     .width(20),
                 iced::widget::container(
-                    iced::widget::text(directory.display_name.clone()).color([0.5, 0.5, 0.5])
+                    iced::widget::text(child.display_name.clone()).color([0.5, 0.5, 0.5])
                 )
                 .width(iced::Length::Fill)
                 .padding(iced::padding::left(15))
             ])
-            .on_press(Message::Expand(directory.path.clone(), !directory.expanded)),
+            .on_press(Message::Expand(child.path.clone(), !child.expanded)),
             iced::widget::button(iced::widget::text("x"))
-                .on_press(Message::Delete(directory.display_name.clone()))
+                .on_press(Message::Delete(child.path.clone()))
         ]);
-        if directory.expanded {
+        if child.expanded {
             note_list = note_list.push(iced::widget::stack![
-                iced::widget::container(dir_tree(&directory.contents))
-                    .padding(iced::padding::left(20)),
+                iced::widget::container(dir_tree(&child)).padding(iced::padding::left(20)),
                 iced::widget::container(iced::widget::vertical_rule(2))
                     .padding(iced::padding::left(10))
             ]);
@@ -79,7 +73,7 @@ fn dir_tree(directory: &DirectoryContents) -> iced::Element<'_, Message> {
 }
 
 impl Notes {
-    pub fn new(location: String) -> (Self, iced::Task<Message>) {
+    pub fn new(location: std::path::PathBuf) -> (Self, iced::Task<Message>) {
         (
             Self {
                 notes: crate::util::Query::Pending,
@@ -121,13 +115,34 @@ impl Notes {
     pub fn update(self: &mut Self, message: Message) -> iced::Task<Message> {
         match message {
             Message::Create => {
-                // self.notes.push(Note {
-                //     path: "New Note".to_string(),
-                // });
-                iced::Task::none()
+                if let crate::util::Query::Loaded(directory) = &mut self.notes {
+                    let mut display_name = "Untitled".to_string();
+                    let mut path = std::path::PathBuf::new()
+                        .join(directory.path.clone())
+                        .join(&display_name);
+                    let mut i = 1;
+                    while path.exists() {
+                        display_name = format!("Untitled {}", i);
+                        path = std::path::PathBuf::new()
+                            .join(directory.path.clone())
+                            .join(&display_name);
+                        i = i + 1;
+                    }
+                    std::fs::File::create(&path).unwrap();
+                    directory.files.push(File {
+                        path: path.clone(),
+                        display_name,
+                    });
+                    iced::Task::done(Message::SetCurrent(path))
+                } else {
+                    iced::Task::none()
+                }
             }
-            Message::Delete(_name) => {
-                // self.notes.retain(|note| note.path != name);
+            Message::Delete(path) => {
+                if let crate::util::Query::Loaded(directory) = &mut self.notes {
+                    directory.files.retain(|f| f.path != path);
+                    std::fs::remove_file(&path).unwrap();
+                }
                 iced::Task::none()
             }
             Message::SetCurrent(path) => {
@@ -159,44 +174,77 @@ impl Notes {
             }
         }
     }
+    pub fn subscription(self: &Self) -> iced::Subscription<Message> {
+        let current_note_sub = if let Some(current) = &self.current {
+            crate::note_editor::NoteEditor::subscription(current).map(Message::NoteEditorMessage)
+        } else {
+            iced::Subscription::none()
+        };
+
+        let notes_panel_subscription = iced::keyboard::on_key_press(|key, modifiers| {
+            if key == iced::keyboard::Key::Character("n".into()) && modifiers.control() {
+                Some(Message::Create)
+            } else {
+                None
+            }
+        });
+
+        iced::Subscription::batch(vec![current_note_sub, notes_panel_subscription])
+    }
 }
 
-fn expand(directory: &mut DirectoryContents, path: String, open: bool) {
+fn expand(directory: &mut Directory, path: std::path::PathBuf, open: bool) {
     for dir in &mut directory.directories {
         if dir.path == path {
             dir.expanded = open;
         }
-        expand(&mut dir.contents, path.clone(), open);
+        dir.directories
+            .iter_mut()
+            .map(|d| expand(d, path.clone(), open))
+            .collect()
     }
 }
 
-async fn load_files(path: String) -> Result<DirectoryContents, std::io::ErrorKind> {
+async fn load_files(path: std::path::PathBuf) -> Result<Directory, std::io::ErrorKind> {
+    println!("Loading files from {:?}", path);
     let mut files = vec![];
     let mut directories = vec![];
 
-    let mut entries = tokio::fs::read_dir(path).await.map_err(|e| e.kind())?;
+    let mut entries = tokio::fs::read_dir(path.clone())
+        .await
+        .map_err(|e| e.kind())?;
 
     while let Ok(Some(entry)) = entries.next_entry().await {
-        let path = entry.path();
-        let display_name = path.file_name().unwrap().to_string_lossy().to_string();
+        let child_path = entry.path();
+        let display_name = child_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
 
-        if path.is_dir() {
+        if child_path.is_dir() {
+            let contents = Box::pin(load_files(child_path.clone())).await?;
+
             directories.push(Directory {
                 display_name,
                 expanded: true,
-                path: path.to_string_lossy().to_string(),
-                contents: Box::pin(load_files(
-                    path.to_str().expect("Can't read pathname").to_string(),
-                ))
-                .await?,
+                path: child_path,
+                files: contents.files,
+                directories: contents.directories,
             });
         } else {
             files.push(File {
                 display_name,
-                path: path.to_string_lossy().to_string(),
+                path: child_path,
             });
         }
     }
 
-    Ok(DirectoryContents { files, directories })
+    Ok(Directory {
+        display_name: path.file_name().unwrap().to_string_lossy().to_string(),
+        path,
+        expanded: true,
+        files,
+        directories,
+    })
 }
