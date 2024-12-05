@@ -118,13 +118,13 @@ impl Notes {
                 if let crate::util::Query::Loaded(directory) = &mut self.notes {
                     let mut display_name = "Untitled".to_string();
                     let mut path = std::path::PathBuf::new()
-                        .join(directory.path.clone())
+                        .join(&directory.path)
                         .join(&display_name);
                     let mut i = 1;
                     while path.exists() {
                         display_name = format!("Untitled {}", i);
                         path = std::path::PathBuf::new()
-                            .join(directory.path.clone())
+                            .join(&directory.path)
                             .join(&display_name);
                         i = i + 1;
                     }
