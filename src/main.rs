@@ -125,7 +125,13 @@ async fn save_config(config: config::Configuration) -> Result<(), std::io::Error
 
 pub fn main() -> iced::Result {
     iced::application("Darkstone", Darkstone::update, Darkstone::view)
-        .theme(|_| iced::Theme::TokyoNight)
+        .theme(|_| iced::Theme::TokyoNightStorm)
         .subscription(Darkstone::subscription)
+        .settings(iced::Settings {
+            fonts: vec![include_bytes!("../assets/darkstone-icons.ttf")
+                .as_slice()
+                .into()],
+            ..iced::Settings::default()
+        })
         .run_with(Darkstone::new)
 }

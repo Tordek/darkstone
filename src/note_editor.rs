@@ -1,5 +1,6 @@
 pub struct NoteEditor {
-    path: std::path::PathBuf,
+    pub path: std::path::PathBuf,
+    display_name: String,
     state: crate::util::Query<InternalState, String>,
 }
 
@@ -23,10 +24,14 @@ pub enum Message {
 }
 
 impl NoteEditor {
-    pub fn from_path(path: std::path::PathBuf) -> (Self, iced::Task<Message>) {
+    pub fn from_path(
+        path: std::path::PathBuf,
+        display_name: String,
+    ) -> (Self, iced::Task<Message>) {
         (
             Self {
                 path: path.clone(),
+                display_name: display_name.clone(),
                 state: crate::util::Query::Pending,
             },
             iced::Task::perform(crate::util::read_file(path), Message::Loaded),
@@ -43,6 +48,17 @@ impl NoteEditor {
             }) => {
                 let main_body: iced::Element<'_, Message> = match view_mode {
                     ViewMode::Edit => iced::widget::TextEditor::new(&content)
+                        .style(
+                            |theme: &iced::Theme, status| iced::widget::text_editor::Style {
+                                border: iced::Border {
+                                    width: 0.0,
+                                    ..Default::default()
+                                },
+                                ..iced::widget::text_editor::default(theme, status)
+                            },
+                        )
+                        .padding(0)
+                        .height(iced::Length::Fill)
                         .on_action(Message::Edit)
                         .into(),
                     ViewMode::Preview => iced::widget::markdown::view(
@@ -57,9 +73,12 @@ impl NoteEditor {
                 };
 
                 iced::widget::column![
+                    iced::widget::text(self.display_name.clone()).size(24),
                     iced::widget::container(main_body).height(iced::Length::Fill),
                     iced::widget::text(self.path.to_string_lossy())
                 ]
+                .spacing(4)
+                .padding(8)
                 .height(iced::Length::Fill)
                 .into()
             }

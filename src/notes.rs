@@ -1,5 +1,7 @@
 use std::io;
 
+use iced::Theme;
+
 pub struct Notes {
     notes: crate::util::Query<Directory, io::ErrorKind>,
     current: Option<crate::note_editor::NoteEditor>,
@@ -9,7 +11,7 @@ pub struct Notes {
 pub enum Message {
     Create,
     Delete(std::path::PathBuf),
-    SetCurrent(std::path::PathBuf),
+    SetCurrent(std::path::PathBuf, String),
     NoteEditorMessage(crate::note_editor::Message),
     LoadFiles(Result<Directory, std::io::ErrorKind>),
     Expand(std::path::PathBuf, bool),
@@ -30,48 +32,6 @@ pub struct Directory {
     directories: Vec<Directory>,
 }
 
-fn dir_tree(directory: &Directory) -> iced::Element<'_, Message> {
-    let mut note_list = iced::widget::Column::new();
-    for file in &directory.files {
-        note_list = note_list.push(
-            iced::widget::row![
-                iced::widget::mouse_area(
-                    iced::widget::text(file.display_name.clone()).width(iced::Length::Fill)
-                )
-                .on_press(Message::SetCurrent(file.path.clone())),
-                iced::widget::button(iced::widget::text("x"))
-                    .on_press(Message::Delete(file.path.clone())),
-            ]
-            .padding(iced::padding::left(15)),
-        );
-    }
-    for child in &directory.directories {
-        note_list = note_list.push(iced::widget::row![
-            iced::widget::mouse_area(iced::widget::row![
-                iced::widget::text(if child.expanded { "-" } else { "+" })
-                    .height(20)
-                    .width(20),
-                iced::widget::container(
-                    iced::widget::text(child.display_name.clone()).color([0.5, 0.5, 0.5])
-                )
-                .width(iced::Length::Fill)
-                .padding(iced::padding::left(15))
-            ])
-            .on_press(Message::Expand(child.path.clone(), !child.expanded)),
-            iced::widget::button(iced::widget::text("x"))
-                .on_press(Message::Delete(child.path.clone()))
-        ]);
-        if child.expanded {
-            note_list = note_list.push(iced::widget::stack![
-                iced::widget::container(dir_tree(&child)).padding(iced::padding::left(20)),
-                iced::widget::container(iced::widget::vertical_rule(2))
-                    .padding(iced::padding::left(10))
-            ]);
-        }
-    }
-    note_list.into()
-}
-
 impl Notes {
     pub fn new(location: std::path::PathBuf) -> (Self, iced::Task<Message>) {
         (
@@ -86,27 +46,40 @@ impl Notes {
         let note_list: iced::Element<'_, Message> = match &self.notes {
             crate::util::Query::Pending => iced::widget::text("Loading...").into(),
             crate::util::Query::Error(e) => iced::widget::text(format!("Error: {:?}", e)).into(),
-            crate::util::Query::Loaded(directory) => iced::widget::scrollable(dir_tree(&directory))
-                .height(iced::Length::Fill)
-                .into(),
+            crate::util::Query::Loaded(directory) => {
+                iced::widget::scrollable(self.dir_tree(&directory))
+                    .height(iced::Length::Fill)
+                    .into()
+            }
         };
 
-        let sidebar = iced::widget::column![
-            note_list,
-            iced::widget::horizontal_rule(1),
-            iced::widget::container(
-                iced::widget::button(iced::widget::text("Create")).on_press(Message::Create)
-            )
-            .width(iced::Length::Fill)
-        ]
-        .spacing(4)
+        let sidebar = iced::widget::container(
+            iced::widget::column![
+                iced::widget::container(
+                    iced::widget::button(crate::util::icon(crate::util::ICON_EDIT))
+                        .style(crate::util::button_secondary)
+                        .on_press(Message::Create)
+                )
+                .center_x(iced::Length::Fill)
+                .width(iced::Length::Fill),
+                iced::widget::horizontal_rule(1),
+                note_list,
+            ]
+            .spacing(8),
+        )
+        .style(|theme| iced::widget::container::Style {
+            background: Some(theme.extended_palette().background.weak.color.into()),
+            ..Default::default()
+        })
         .width(280)
         .padding(8);
 
         let main_view: iced::Element<'_, Message> = if let Some(current_note) = &self.current {
             crate::note_editor::NoteEditor::view(current_note).map(Message::NoteEditorMessage)
         } else {
-            iced::widget::text("No note selected").into()
+            iced::widget::container(iced::widget::text("No note selected"))
+                .padding(8)
+                .into()
         };
 
         iced::widget::row![sidebar, main_view].into()
@@ -131,9 +104,9 @@ impl Notes {
                     std::fs::File::create(&path).unwrap();
                     directory.files.push(File {
                         path: path.clone(),
-                        display_name,
+                        display_name: display_name.clone(),
                     });
-                    iced::Task::done(Message::SetCurrent(path))
+                    iced::Task::done(Message::SetCurrent(path, display_name))
                 } else {
                     iced::Task::none()
                 }
@@ -145,8 +118,9 @@ impl Notes {
                 }
                 iced::Task::none()
             }
-            Message::SetCurrent(path) => {
-                let (state, next_task) = crate::note_editor::NoteEditor::from_path(path);
+            Message::SetCurrent(path, display_name) => {
+                let (state, next_task) =
+                    crate::note_editor::NoteEditor::from_path(path, display_name);
                 self.current = Some(state);
                 next_task.map(Message::NoteEditorMessage)
             }
@@ -191,6 +165,70 @@ impl Notes {
 
         iced::Subscription::batch(vec![current_note_sub, notes_panel_subscription])
     }
+
+    fn dir_tree(self: &Self, directory: &Directory) -> iced::Element<'_, Message> {
+        let mut note_list = iced::widget::Column::new();
+        for child in &directory.directories {
+            note_list = note_list.push(iced::widget::row![
+                iced::widget::button(iced::widget::row![
+                    crate::util::icon(if child.expanded {
+                        crate::util::ICON_DOWN_SMALL
+                    } else {
+                        crate::util::ICON_RIGHT_SMALL
+                    }),
+                    iced::widget::container(iced::widget::text(child.display_name.clone()).style(
+                        |theme: &iced::Theme| iced::widget::text::Style {
+                            color: Some(theme.extended_palette().background.strong.text.into()),
+                            ..Default::default()
+                        }
+                    ))
+                    .width(iced::Length::Fill)
+                    .padding(iced::padding::left(15))
+                ])
+                .style(crate::util::button_no_bg)
+                .on_press(Message::Expand(child.path.clone(), !child.expanded)),
+                iced::widget::button(crate::util::icon(crate::util::ICON_DELETE))
+                    .style(crate::util::button_no_bg)
+                    .on_press(Message::Delete(child.path.clone()))
+            ]);
+            if child.expanded {
+                note_list = note_list.push(iced::widget::stack![
+                    iced::widget::container(self.dir_tree(&child)).padding(iced::padding::left(20)),
+                    iced::widget::container(iced::widget::vertical_rule(2))
+                        .padding(iced::padding::left(10))
+                ]);
+            }
+        }
+        for file in &directory.files {
+            note_list = note_list.push(
+                iced::widget::row![
+                    iced::widget::button(
+                        iced::widget::text(file.display_name.clone()).width(iced::Length::Fill)
+                    )
+                    .style(
+                        if self
+                            .current
+                            .as_ref()
+                            .map_or(false, |v| v.path == file.path.clone())
+                        {
+                            crate::util::button_no_bg_active
+                        } else {
+                            crate::util::button_no_bg
+                        }
+                    )
+                    .on_press(Message::SetCurrent(
+                        file.path.clone(),
+                        file.display_name.clone()
+                    )),
+                    iced::widget::button(crate::util::icon(crate::util::ICON_DELETE))
+                        .style(crate::util::button_no_bg)
+                        .on_press(Message::Delete(file.path.clone())),
+                ]
+                .padding(iced::padding::left(15)),
+            );
+        }
+        note_list.into()
+    }
 }
 
 fn expand(directory: &mut Directory, path: std::path::PathBuf, open: bool) {
@@ -198,10 +236,7 @@ fn expand(directory: &mut Directory, path: std::path::PathBuf, open: bool) {
         if dir.path == path {
             dir.expanded = open;
         }
-        dir.directories
-            .iter_mut()
-            .map(|d| expand(d, path.clone(), open))
-            .collect()
+        expand(dir, path.clone(), open);
     }
 }
 
