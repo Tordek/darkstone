@@ -291,4 +291,7 @@ fn bold(content: &mut iced::widget::text_editor::Content) {
     for editing in editings {
         content.perform(iced::widget::text_editor::Action::Edit(editing));
     }
+    content.perform(iced::widget::text_editor::Action::Select(
+        iced::widget::text_editor::Motion::Left(1),
+    ));
 }
